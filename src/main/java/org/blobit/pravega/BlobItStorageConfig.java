@@ -18,7 +18,8 @@ import lombok.Getter;
  */
 public class BlobItStorageConfig {
     
-    public static final Property<String> CONFIGURI = Property.named("blobit.config.uri", "", "configUri");
+    public static final Property<String> BKCONFIGURI = Property.named("bk.config.uri", "lcoalhost:2181");
+    public static final Property<String> JDBCCONFIGURI = Property.named("jdbc.config.uri", "jdbc:herddb:zookeeper:localhost:2181/herd");
     public static final Property<String> BUCKET = Property.named("bucket", "");
     
     
@@ -26,11 +27,16 @@ public class BlobItStorageConfig {
     private final String bkUri;
 
     @Getter
+    private final String jdbcUrl;
+    
+    @Getter
     private final String bucket;
     
     private BlobItStorageConfig(TypedProperties properties) throws ConfigurationException {
         this.bucket = Preconditions.checkNotNull(properties.get(BUCKET), "bucket");
-        this.bkUri = Preconditions.checkNotNull(properties.get(CONFIGURI), "blobkit.config.uri");
+        this.bkUri = Preconditions.checkNotNull(properties.get(BKCONFIGURI), "bk.config.uri");
+        this.jdbcUrl = Preconditions.checkNotNull(properties.get(JDBCCONFIGURI), "bk.config.uri");
+        // TODO: plumb all configuration options
     }
 
     /**

@@ -33,15 +33,19 @@ public class BlobItStorage extends BaseChunkStorage {
     private final BucketHandle bucket;
 
     BlobItStorage(BlobItStorageConfig config) throws ObjectManagerException {
+        // todo: configuration
         Configuration configuration
                 = new Configuration()
                         .setType(Configuration.TYPE_BOOKKEEPER)
-                        .setUseTablespaces(false)
+                        .setUseTablespaces(false) // if we know for each chunk the scope or stream name (currently not possible by design, we could leverage partitioned metadata feature)
                         .setConcurrentWriters(10)
                         .setEmptyLedgerMinTtl(0)
+                        .setReplicationFactor(1) 
                         .setZookeeperUrl(config.getBkUri());
+        // TODO: configuration
         Properties dsProperties = new Properties();
         datasource = new HerdDBEmbeddedDataSource(dsProperties);
+        datasource.setUrl(config.getJdbcUrl());
         objectManager = ObjectManagerFactory.
                 createObjectManager(configuration, datasource);
         objectManager.start();
@@ -89,6 +93,7 @@ public class BlobItStorage extends BaseChunkStorage {
 
     @Override
     protected ChunkHandle doCreate(String chunkName) throws ChunkStorageException {
+        // NOOP ?
         return ChunkHandle.writeHandle(chunkName);
     }
 
@@ -98,7 +103,7 @@ public class BlobItStorage extends BaseChunkStorage {
             NamedObjectMetadata metadata = bucket.statByName(chunkName);
             return metadata != null;
         } catch (ObjectManagerException ex) {
-            // BAD CONSTRUCTOR
+            // BAD CONSTRUCTOR, why not simply "new ChunkStorageException(chunkName, ex); " ?
             throw new ChunkStorageException(chunkName, "", ex);
         }
     }
@@ -106,6 +111,7 @@ public class BlobItStorage extends BaseChunkStorage {
     @Override
     protected void doDelete(ChunkHandle handle) throws ChunkStorageException {
         try {
+            // TODO: this is CompletableFuture, we could leverage async nature of the storage
             bucket
                     .deleteByName(handle.getChunkName())
                     .get();
@@ -122,11 +128,13 @@ public class BlobItStorage extends BaseChunkStorage {
 
     @Override
     protected ChunkHandle doOpenRead(String chunkName) throws ChunkStorageException {
+        // NO OP ?
         return ChunkHandle.readHandle(chunkName);
     }
 
     @Override
     protected ChunkHandle doOpenWrite(String chunkName) throws ChunkStorageException {
+        // NO OP ?
         return ChunkHandle.writeHandle(chunkName);
     }
 
@@ -155,8 +163,9 @@ public class BlobItStorage extends BaseChunkStorage {
                 read.set(numBytes);
             },
                     new BufferOutputStream(buffer, bufferOffset),
-                    (int) fromOffset, length)
-                    .get();
+                    (int) fromOffset, // this is a problem in BlobIt API, it should be fixed up there
+                    length)
+                    .get(); // TODO: this is CompletableFuture, we could leverage async nature of the storage
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             throw new ChunkStorageException(handle.getChunkName(), "", ex);
@@ -170,9 +179,11 @@ public class BlobItStorage extends BaseChunkStorage {
     protected int doWrite(ChunkHandle handle, long offset, int length, InputStream data) throws ChunkStorageException {
         try {
             if (offset == 0) {
+                // TODO: this is CompletableFuture, we could leverage async nature of the storage
                 bucket.put(handle.getChunkName(), length, data, PutOptions.OVERWRITE).get();
             } else {
-                // it is expected to be offset == current size
+                // it is expected to be offset == current size,
+                // in order to check this at this level we should perform an additional metadata operation
                 bucket.put(handle.getChunkName(), length, data, PutOptions.APPEND).get();
             }
             return length;
@@ -198,6 +209,8 @@ public class BlobItStorage extends BaseChunkStorage {
                     throw new ChunkStorageException(concat.getName(), "error during concat with " + first, ex);
                 }
             }
+            // if we are concatenating "long" lenghts, why the return type is "int" ?
+            // can we assume the "length" here is the size of the whole chunk ?
             total += (int) concat.getLength();
         }
         return total;
@@ -205,11 +218,15 @@ public class BlobItStorage extends BaseChunkStorage {
 
     @Override
     protected void doSetReadOnly(ChunkHandle handle, boolean isReadOnly) throws ChunkStorageException, UnsupportedOperationException {
-        // not supported
+        // not supported, what happens if we do not support this feature ?
+        // shall we have a isSetReadOnlySupported ?
     }
 
     @Override
     protected boolean doTruncate(ChunkHandle handle, long offset) throws ChunkStorageException, UnsupportedOperationException {
+        // this feature could be implemented in BlobIt, but now we could only
+        // truncate chunks that are the result of "concat" operations
+        // will it make sense to implement it ?
         return false;
     }
 
