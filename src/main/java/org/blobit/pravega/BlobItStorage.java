@@ -40,19 +40,31 @@ public class BlobItStorage extends BaseChunkStorage {
                         .setUseTablespaces(false) // if we know for each chunk the scope or stream name (currently not possible by design, we could leverage partitioned metadata feature)
                         .setConcurrentWriters(10)
                         .setEmptyLedgerMinTtl(0)
-                        .setReplicationFactor(1) 
-                        .setZookeeperUrl(config.getBkUri());
+                        .setReplicationFactor(1)
+                        .setZookeeperUrl(config.getBkUri()); // is there any way to use the BK coonfiguration for tier1 ?
         // TODO: configuration
         Properties dsProperties = new Properties();
         datasource = new HerdDBEmbeddedDataSource(dsProperties);
         datasource.setUrl(config.getJdbcUrl());
         objectManager = ObjectManagerFactory.
                 createObjectManager(configuration, datasource);
-        objectManager.start();
-        if (objectManager.getBucketMetadata(config.getBucket()) == null) {
-            objectManager.createBucket(config.getBucket(), config.getBucket(), BucketConfiguration.DEFAULT);
+
+        // missing a BaseChunkStorage#start() method.
+        // here we are creating a java object and then performing
+        // lots of expensive operations (booting the database and the ObjectManager)
+        // handling a failure in the constructor is error prone
+        try {
+            objectManager.start();
+            
+            // this is another metadata operation, not to be issued inside this constructor
+            if (objectManager.getBucketMetadata(config.getBucket()) == null) {
+                objectManager.createBucket(config.getBucket(), config.getBucket(), BucketConfiguration.DEFAULT);
+            }
+            bucket = objectManager.getBucket(config.getBucket());
+        } catch (ObjectManagerException err) {
+            objectManager.close();
+            throw err;
         }
-        bucket = objectManager.getBucket(config.getBucket());
     }
 
     @Override
@@ -209,7 +221,7 @@ public class BlobItStorage extends BaseChunkStorage {
                     throw new ChunkStorageException(concat.getName(), "error during concat with " + first, ex);
                 }
             }
-            // if we are concatenating "long" lenghts, why the return type is "int" ?
+            // if we are concatenating "long" lengths, why the return type is "int" ?
             // can we assume the "length" here is the size of the whole chunk ?
             total += (int) concat.getLength();
         }
@@ -229,6 +241,5 @@ public class BlobItStorage extends BaseChunkStorage {
         // will it make sense to implement it ?
         return false;
     }
-
 
 }
